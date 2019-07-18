@@ -90,10 +90,10 @@ func (c *Cache) Get(key string) (interface{}, bool) {
 
 	defer c.RUnlock()
 
-	item, found := c.items[key]
+	item, found := c.items[key]  //поиск с RAM
 
 	if !found {
-		item, found := c.GetSecondCache(key)
+		item, found := c.GetSecondCache(key)  // поиск с HDD
 		if !found {
 			return nil, false
 		}
@@ -109,7 +109,7 @@ func (c *Cache) Get(key string) (interface{}, bool) {
 	return item.Value, true
 }
 
-func (c *Cache) GetSecondCache(key string) (interface{}, bool) {
+func (c *Cache) GetSecondCache(key string) (Item, bool) {
 
 	c.RLock()
 
@@ -118,7 +118,7 @@ func (c *Cache) GetSecondCache(key string) (interface{}, bool) {
 	_, found := c.itemsSecondCache[key]
 
 	if !found {
-		return nil, false
+		return Item{}, false
 	}
 
 	// Нужно сделать чтение с файла под именем key сруктуры Item в переменную item
