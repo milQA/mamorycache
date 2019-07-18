@@ -128,7 +128,7 @@ func (c *Cache) GetSecondCache(key string) (interface{}, bool) {
 	delete(c.itemsSecondCache, key)
 
 	//лог: "structure "key" moveed is HDD in RAM"
-	return c.items[key].Value, true
+	return c.items[key], true
 }
 
 func (c *Cache) Delete(key string) error {
