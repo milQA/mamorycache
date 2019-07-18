@@ -2,27 +2,27 @@ package memorycache
 
 import (
 	"errors"
+	"os"
 	"sync"
-  "os"
 	"time"
 )
 
 //==============================
 
 type Cache struct {
-    sync.RWMutex
-    items                 map[string]Item
-    defaultExpiration     time.Duration
-    cleanupInterval       time.Duration
-    expirationTime        time.Duration
-    itemsSecondCache      map[string]int64
+	sync.RWMutex
+	items             map[string]Item
+	defaultExpiration time.Duration
+	cleanupInterval   time.Duration
+	expirationTime    time.Duration
+	itemsSecondCache  map[string]int64
 }
 
 type Item struct {
-    Value                           interface{}
-    Created                         time.Time
-    ExpirationDeleteTime            int64
-    TransferCacheSecondLevelTime    int64
+	Value                        interface{}
+	Created                      time.Time
+	ExpirationDeleteTime         int64
+	TransferCacheSecondLevelTime int64
 }
 
 //===============================
@@ -30,17 +30,17 @@ type Item struct {
 func New(defaultExpiration, cleanupInterval, expirationTime time.Duration) *Cache {
 
 	items := make(map[string]Item)
-  itemsSecondCache := make(map[string]int64)
+	itemsSecondCache := make(map[string]int64)
 
 	cache := Cache{
 		items:             items,
 		defaultExpiration: defaultExpiration,
 		cleanupInterval:   cleanupInterval,
-    expirationTime:    expirationTime,
-    itemsSecondCache:  itemsSecondCache,
+		expirationTime:    expirationTime,
+		itemsSecondCache:  itemsSecondCache,
 	}
 
-  //лог: "make structure"
+	//лог: "make structure"
 
 	if cleanupInterval > 0 {
 		cache.StartGC()
@@ -57,7 +57,7 @@ func (c *Cache) Set(key string, value interface{}, durationDelete, durationTrans
 		durationDelete = c.expirationTime
 	}
 
-  if durationTransfer == 0 {
+	if durationTransfer == 0 {
 		durationTransfer = c.defaultExpiration
 	}
 
@@ -65,22 +65,22 @@ func (c *Cache) Set(key string, value interface{}, durationDelete, durationTrans
 		expirationDeleteTime = time.Now().Add(durationDelete).UnixNano()
 	}
 
-  if durationTransfer > 0 {
+	if durationTransfer > 0 {
 		transferCacheSecondLevelTime = time.Now().Add(durationTransfer).UnixNano()
 	}
 
 	c.Lock()
 
 	c.items[key] = Item{
-		Value:      value,
-    Created:    time.Now(),
-		ExpirationDeleteTime: expirationDeleteTime,
-    TransferCacheSecondLevelTime: transferCacheSecondLevelTime,
+		Value:                        value,
+		Created:                      time.Now(),
+		ExpirationDeleteTime:         expirationDeleteTime,
+		TransferCacheSecondLevelTime: transferCacheSecondLevelTime,
 	}
 
-  // лог: "structure "key" is added in RAM"
+	// лог: "structure "key" is added in RAM"
 
-  c.Unlock()
+	c.Unlock()
 
 }
 
@@ -93,13 +93,13 @@ func (c *Cache) Get(key string) (interface{}, bool) {
 	item, found := c.items[key]
 
 	if !found {
-    item, found := c.GetSecondCache(key)
-    if !found {
-      return nil, false
-    }
+		item, found := c.GetSecondCache(key)
+		if !found {
+			return nil, false
+		}
 	}
 
-//Ниже проверка на жизнь найденной записи
+	//Ниже проверка на жизнь найденной записи
 	if item.ExpirationDeleteTime > 0 {
 		if time.Now().UnixNano() > item.ExpirationDeleteTime {
 			return nil, false
@@ -115,20 +115,20 @@ func (c *Cache) GetSecondCache(key string) (interface{}, bool) {
 
 	defer c.RUnlock()
 
-	item, found := c.itemsSecondCache[key]
+	_, found := c.itemsSecondCache[key]
 
 	if !found {
-    return nil, false
+		return nil, false
 	}
 
-  // Нужно сделать чтение с файла под именем key сруктуры Item в переменную item
+	// Нужно сделать чтение с файла под именем key сруктуры Item в переменную item
 
-  c.items[key] = item
+	//  c.items[key] = item
 
-  delete(c.itemsSecondCache, key)
+	delete(c.itemsSecondCache, key)
 
-  //лог: "structure "key" moveed is HDD in RAM"
-	return item.Value, true
+	//лог: "structure "key" moveed is HDD in RAM"
+	return key, true
 }
 
 func (c *Cache) Delete(key string) error {
@@ -138,17 +138,16 @@ func (c *Cache) Delete(key string) error {
 	defer c.Unlock()
 
 	if _, found := c.items[key]; !found {
-    found := c.deleteSecondCache(key)
-    if !found {
-      return errors.New("Key not found")
-    } else {
-      return nil
-    }
+		found := c.deleteSecondCache(key)
+		if !found {
+			return errors.New("Key not found")
+		} else {
+			return nil
+		}
 	}
 
 	delete(c.items, key)
-  //лог: "structure "key" delete"
-
+	//лог: "structure "key" delete"
 
 	return nil
 }
@@ -167,22 +166,22 @@ func (c *Cache) GC() {
 			return
 		}
 
-    if keys := c.transferKeys(); len(keys) != 0 {
-      c.transferItems(keys)
-    }
+		if keys := c.transferKeys(); len(keys) != 0 {
+			c.transferItems(keys)
+		}
 
 		if keys := c.expiredKeys(); len(keys) != 0 {
 			c.clearItems(keys)
 		}
 	}
 
-  c.CacheStatus()
+	c.CacheStatus()
 }
 
 func (c *Cache) CacheStatus() {
 
-//лог: "number of structures in RAM: len(c.items)"
-//лог: "number of structures in HDD: len(c.itemsSecondCache)"
+	//лог: "number of structures in RAM: len(c.items)"
+	//лог: "number of structures in HDD: len(c.itemsSecondCache)"
 
 }
 
@@ -198,11 +197,11 @@ func (c *Cache) expiredKeys() (keys []string) {
 		}
 	}
 
-  for k, i := range c.itemsSecondCache {
-    if time.Now().UnixNano() > i && i > 0 {
-      keys = append(keys, k)
-    }
-  }
+	for k, i := range c.itemsSecondCache {
+		if time.Now().UnixNano() > i && i > 0 {
+			keys = append(keys, k)
+		}
+	}
 
 	return
 }
@@ -227,17 +226,17 @@ func (c *Cache) clearItems(keys []string) {
 	c.Lock()
 
 	for _, k := range keys {
-    err := os.Remove(k)
-    if err != nil {
-      delete(c.items, k)
-    }	else {
-      delete(c.itemsSecondCache, k)
-    }
+		err := os.Remove(k)
+		if err != nil {
+			delete(c.items, k)
+		} else {
+			delete(c.itemsSecondCache, k)
+		}
 	}
 
-  //лог: "structure "key" delete"
+	//лог: "structure "key" delete"
 
-  c.Unlock()
+	c.Unlock()
 }
 
 func (c *Cache) transferItems(keys []string) {
@@ -246,30 +245,29 @@ func (c *Cache) transferItems(keys []string) {
 	for _, key := range keys {
 		c.itemsSecondCache[key] = c.items[key].ExpirationDeleteTime
 
-	  //нужно сделать запись в файл с именем key структуры c.items[key]
+		//нужно сделать запись в файл с именем key структуры c.items[key]
 
-	  delete(c.items, key)
+		delete(c.items, key)
 
-	  //лог: "structure "key" moveed is RAM in HDD"
+		//лог: "structure "key" moveed is RAM in HDD"
 
 	}
 
-
-  c.Unlock()
+	c.Unlock()
 }
 
-func (c *Cache) deleteSecondCache(key string) (bool) {
+func (c *Cache) deleteSecondCache(key string) bool {
 
 	c.Lock()
 
-  defer c.Unlock()
+	defer c.Unlock()
 
-  err := os.Remove(key)
-  if err != nil {
-    return false
-  }
+	err := os.Remove(key)
+	if err != nil {
+		return false
+	}
 
-  delete(c.itemsSecondCache, key)
-  //лог: "structure "key" delete"
-  return true
+	delete(c.itemsSecondCache, key)
+	//лог: "structure "key" delete"
+	return true
 }
