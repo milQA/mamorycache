@@ -245,13 +245,17 @@ func (c *Cache) clearItems(keys []string) {
 func (c *Cache) transferItems(keys []string) {
 
 	c.Lock()
-  c.itemsSecondCache[key] = c.items[key].ExpirationDeleteTime
+	for _, key := range keys {
+		c.itemsSecondCache[key] = c.items[key].ExpirationDeleteTime
 
-  //нужно сделать запись в файл с именем key структуры c.items[key]
+	  //нужно сделать запись в файл с именем key структуры c.items[key]
 
-  delete(c.items, k)
+	  delete(c.items, key)
 
-  //лог: "structure "key" moveed is RAM in HDD"
+	  //лог: "structure "key" moveed is RAM in HDD"
+
+	}
+
 
   c.Unlock()
 }
