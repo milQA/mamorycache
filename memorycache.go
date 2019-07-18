@@ -1,7 +1,9 @@
 package memorycache
 
 import (
+	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"sync"
 	"time"
@@ -19,10 +21,10 @@ type Cache struct {
 }
 
 type Item struct {
-	Value                        interface{}
-	Created                      time.Time
-	ExpirationDeleteTime         int64
-	TransferCacheSecondLevelTime int64
+	Value                        interface{} `json:"value"`
+	Created                      time.Time   `json:"created"`
+	ExpirationDeleteTime         int64       `json:"expiration"`
+	TransferCacheSecondLevelTime int64       `json:"transfer"`
 }
 
 //===============================
@@ -90,10 +92,10 @@ func (c *Cache) Get(key string) (interface{}, bool) {
 
 	defer c.RUnlock()
 
-	item, found := c.items[key]  //поиск с RAM
+	item, found := c.items[key] //поиск с RAM
 
 	if !found {
-		item, found := c.GetSecondCache(key)  // поиск с HDD
+		item, found = c.GetSecondCache(key) // поиск с HDD
 		if !found {
 			return nil, false
 		}
@@ -120,7 +122,21 @@ func (c *Cache) GetSecondCache(key string) (Item, bool) {
 	if !found {
 		return Item{}, false
 	}
-
+	f, err := os.Open(key)
+	if err != nil {
+		fmt.Println(err)
+	}
+	fi, _ := f.Stat()
+	by := make([]byte, fi.Size())
+	_, err = f.Read(by)
+	if err != nil {
+		fmt.Println(err)
+	}
+	var item Item
+	err = json.Unmarshal(by, item)
+	if err != nil {
+		fmt.Println(err)
+	}
 	// Нужно сделать чтение с файла под именем key сруктуры Item в переменную item
 
 	c.items[key] = item
@@ -128,7 +144,7 @@ func (c *Cache) GetSecondCache(key string) (Item, bool) {
 	delete(c.itemsSecondCache, key)
 
 	//лог: "structure "key" moveed is HDD in RAM"
-	return c.items[key], true
+	return item, true
 }
 
 func (c *Cache) Delete(key string) error {
@@ -244,8 +260,19 @@ func (c *Cache) transferItems(keys []string) {
 	c.Lock()
 	for _, key := range keys {
 		c.itemsSecondCache[key] = c.items[key].ExpirationDeleteTime
-
-		//нужно сделать запись в файл с именем key структуры c.items[key]
+		f, err := os.Create(key)
+		if err != nil {
+			fmt.Println(err)
+		}
+		by, err := json.Marshal(c.items[key])
+		if err != nil {
+			fmt.Println(err)
+		}
+		_, err = f.Write(by)
+		if err != nil {
+			fmt.Println(err)
+		}
+		f.Close()
 
 		delete(c.items, key)
 
