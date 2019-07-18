@@ -141,7 +141,7 @@ func (c *Cache) GetSecondCache(key string) (Item, bool) {
 		fmt.Println(err)
 	}
 	var item Item
-	err = json.Unmarshal(by, item)
+	err = json.Unmarshal(by, &item)
 	if err != nil {
 		fmt.Println(err)
 	}
