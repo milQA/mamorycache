@@ -123,12 +123,12 @@ func (c *Cache) GetSecondCache(key string) (interface{}, bool) {
 
 	// Нужно сделать чтение с файла под именем key сруктуры Item в переменную item
 
-	//  c.items[key] = item
+	c.items[key] = item
 
 	delete(c.itemsSecondCache, key)
 
 	//лог: "structure "key" moveed is HDD in RAM"
-	return key, true
+	return c.items[key].Value, true
 }
 
 func (c *Cache) Delete(key string) error {
