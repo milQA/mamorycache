@@ -4,13 +4,13 @@
 
 ## Install
 
-  go get github.com/milQA/mamorycache
+  go get github.com/milQA/memorycache
 
 
 ## Inport
 
 	import (
-		memorycache "github.com/milQA/mamorycache"
+		memorycache "github.com/milQA/memorycache"
 	)
 
 ## Create cache
@@ -26,7 +26,7 @@
 
 	cache.Set("Key", "Value", 10 * time.Minute, 5 * time.Minute)
 
-  Если durationDelete = 0 и durationTransfer = 0 запись будет храниться в кэше до удаления командой cache.Delete().
+  Если durationDelete = -1 и durationTransfer = -1 запись будет храниться в кэше до удаления командой cache.Delete().
 
   Чтобы получить значение из кэша необходимо использовать команду cache.Get("myKey")
 
