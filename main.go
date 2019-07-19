@@ -1,308 +1,120 @@
 package main
 
 import (
-	"encoding/json"
-	"errors"
 	"fmt"
-	"os"
-	"sync"
-	"time"
+	"net/http"
+	"strings"
+  "src/memorycache"
+
+	"github.com/gorilla/mux"
 )
 
-//==============================
-
 type Cache struct {
-	sync.RWMutex
-	items             map[string]Item
-	defaultExpiration time.Duration
-	cleanupInterval   time.Duration
-	expirationTime    time.Duration
-	itemsSecondCache  map[string]int64
+	defaultExpiration time.Duration      `json: transfer`
+	cleanupInterval   time.Duration      `json: interval`
+	expirationTime    time.Duration      `json: expiration`
 }
 
 type Item struct {
-	Value                        interface{} `json:"value"`
-	Created                      time.Time   `json:"created"`
-	ExpirationDeleteTime         int64       `json:"expiration"`
-	TransferCacheSecondLevelTime int64       `json:"transfer"`
+  key                          string      `json: key`
+  value                        interface{} `json:"value"`
 }
-
-//===============================
 
 func main() {
-	cache := New(5*time.Minute, 2*time.Minute, 10*time.Minute)
-	cache.Set("Key", "Value", 10*time.Minute, 5*time.Minute)
-	cache.transferItems([]string{"Key"})
-	i, _ := cache.Get("Key")
-	fmt.Print(i)
+	r := mux.NewRouter()
+	r.HandleFunc("/", handler)
+  s := r.PathPrefix("/cache").Subrouter()
+  s.HandleFunc("/Make", handlerPostMakeCache).Methods("POST")
+	s.HandleFunc("/Status", handlerGetCacheStatus).Methods("GET")
+	s.HandleFunc("/{key}", handlerGetCacheValue).Methods("GET")
+	s.HandleFunc("/Add", handlerPostCacheValue).Methods("POST")
+  s.HandleFunc("/{key}", handlerDeleteCacheValue).Methods("DELETE")
+
+	http.Handle("/", r)
 }
 
-func New(defaultExpiration, cleanupInterval, expirationTime time.Duration) *Cache {
-
-	items := make(map[string]Item)
-	itemsSecondCache := make(map[string]int64)
-
-	cache := Cache{
-		items:             items,
-		defaultExpiration: defaultExpiration,
-		cleanupInterval:   cleanupInterval,
-		expirationTime:    expirationTime,
-		itemsSecondCache:  itemsSecondCache,
-	}
-
-	//лог: "make structure"
-
-	if cleanupInterval > 0 {
-		cache.StartGC()
-	}
-
-	return &cache
+func handler(w http.ResponseWriter, r *http.Request)  {
+  return
 }
 
-func (c *Cache) Set(key string, value interface{}, durationDelete, durationTransfer time.Duration) {
+func handlerPostMakeCache(w http.ResponseWriter, r *http.Request)  {
+  w.Header().Set("Content-Type", "application/json")
 
-	var expirationDeleteTime, transferCacheSecondLevelTime int64
 
-	if durationDelete == 0 {
-		durationDelete = c.expirationTime
-	}
+  var item Cache
+  err = json.NewDecoder(r.Body).Decode(&item)
 
-	if durationTransfer == 0 {
-		durationTransfer = c.defaultExpiration
-	}
+  if err != nil {
+    json.NewEncoder(w).Encode("400 Bad Request")
+    return
+  }
 
-	if durationDelete > 0 {
-		expirationDeleteTime = time.Now().Add(durationDelete).UnixNano()
-	}
+  memorycache.New(item.defaultExpiration, item.cleanupInterval, item.expirationTime)
 
-	if durationTransfer > 0 {
-		transferCacheSecondLevelTime = time.Now().Add(durationTransfer).UnixNano()
-	}
+  json.NewEncoder(w).Encode("Все найз")
 
-	c.Lock()
+  // Нужно сделать чтение с JSON. JSON из 3-х полей
 
-	c.items[key] = Item{
-		Value:                        value,
-		Created:                      time.Now(),
-		ExpirationDeleteTime:         expirationDeleteTime,
-		TransferCacheSecondLevelTime: transferCacheSecondLevelTime,
-	}
 
-	// лог: "structure "key" is added in RAM"
 
-	c.Unlock()
-
+  return
 }
 
-func (c *Cache) Get(key string) (interface{}, bool) {
+func handlerGetCacheStatus(w http.ResponseWriter, r *http.Request)  {
 
-	c.RLock()
+  cache.CacheStatus()
 
-	defer c.RUnlock()
+  //необходимо сделать вывод статуса в JSON
 
-	item, found := c.items[key] //поиск с RAM
-
-	if !found {
-		item, found = c.GetSecondCache(key) // поиск с HDD
-		if !found {
-			return nil, false
-		}
-	}
-
-	//Ниже проверка на жизнь найденной записи
-	if item.ExpirationDeleteTime > 0 {
-		if time.Now().UnixNano() > item.ExpirationDeleteTime {
-			return nil, false
-		}
-	}
-
-	return item.Value, true
+  return
 }
 
-func (c *Cache) GetSecondCache(key string) (Item, bool) {
+func handlerGetCacheValue(w http.ResponseWriter, r *http.Request)  {
+  w.Header().Set("Content-Type", "application/json")
 
-	c.RLock()
+  vars := mux.Vars(r)
+  w.WriteHeader(http.StatusOK)
 
-	defer c.RUnlock()
+  i, _ := cache.Get(vars["key"])
+  item := Item{
+    key:    vars["key"],
+    value:  i,
+  }
 
-	_, found := c.itemsSecondCache[key]
-
-	if !found {
-		return Item{}, false
-	}
-	f, err := os.Open(key)
-	if err != nil {
-		fmt.Println(err)
-	}
-	fi, _ := f.Stat()
-	by := make([]byte, fi.Size())
-	_, err = f.Read(by)
-	if err != nil {
-		fmt.Println(err)
-	}
-	var item Item
-	err = json.Unmarshal(by, &item)
-	if err != nil {
-		fmt.Println(err)
-	}
-	// Нужно сделать чтение с файла под именем key сруктуры Item в переменную item
-
-	c.items[key] = item
-
-	delete(c.itemsSecondCache, key)
-
-	//лог: "structure "key" moveed is HDD in RAM"
-	return item, true
-}
-
-func (c *Cache) Delete(key string) error {
-
-	c.Lock()
-
-	defer c.Unlock()
-
-	if _, found := c.items[key]; !found {
-		found := c.deleteSecondCache(key)
-		if !found {
-			return errors.New("Key not found")
-		} else {
-			return nil
-		}
-	}
-
-	delete(c.items, key)
-	//лог: "structure "key" delete"
-
-	return nil
-}
-
-func (c *Cache) StartGC() {
-	go c.GC()
-}
-
-func (c *Cache) GC() {
-
-	for {
-
-		<-time.After(c.cleanupInterval)
-
-		if c.items == nil {
-			return
-		}
-
-		if keys := c.transferKeys(); len(keys) != 0 {
-			c.transferItems(keys)
-		}
-
-		if keys := c.expiredKeys(); len(keys) != 0 {
-			c.clearItems(keys)
-		}
-	}
-
-	c.CacheStatus()
-}
-
-func (c *Cache) CacheStatus() {
-
-	//лог: "number of structures in RAM: len(c.items)"
-	//лог: "number of structures in HDD: len(c.itemsSecondCache)"
+  json.NewEncoder(w).Encode(&item)
 
 }
 
-func (c *Cache) expiredKeys() (keys []string) {
+func handlerPostCacheValue(w http.ResponseWriter, r *http.Request)  {
+  w.Header().Set("Content-Type", "application/json")
+  // Нужно сделать чтение с JSON. JSON из 4-х полей
 
-	c.RLock()
 
-	defer c.RUnlock()
+  var item Item
+  err = json.NewDecoder(r.Body).Decode(&item)
 
-	for k, i := range c.items {
-		if time.Now().UnixNano() > i.ExpirationDeleteTime && i.ExpirationDeleteTime > 0 {
-			keys = append(keys, k)
-		}
-	}
+  if err != nil {
+    json.NewEncoder(w).Encode("400 Bad Request")
+    return
+  }
 
-	for k, i := range c.itemsSecondCache {
-		if time.Now().UnixNano() > i && i > 0 {
-			keys = append(keys, k)
-		}
-	}
+  cache.Set(item.key, item.value, 0, 0)
 
-	return
+  json.NewEncoder(w).Encode("Все найз")
+
+  return
 }
 
-func (c *Cache) transferKeys() (keys []string) {
+func handlerDeleteCacheValue(w http.ResponseWriter, r *http.Request)  {
+  vars := mux.Vars(r)
+  w.WriteHeader(http.StatusOK)
 
-	c.RLock()
+  err := cache.Delete(vars["key"])
 
-	defer c.RUnlock()
+  if err != nil {
+    json.NewEncoder(w).Encode(err)
+    return
+  }
 
-	for k, i := range c.items {
-		if time.Now().UnixNano() > i.TransferCacheSecondLevelTime && i.TransferCacheSecondLevelTime > 0 {
-			keys = append(keys, k)
-		}
-	}
-
-	return
-}
-
-func (c *Cache) clearItems(keys []string) {
-
-	c.Lock()
-
-	for _, k := range keys {
-		err := os.Remove(k)
-		if err != nil {
-			delete(c.items, k)
-		} else {
-			delete(c.itemsSecondCache, k)
-		}
-	}
-
-	//лог: "structure "key" delete"
-
-	c.Unlock()
-}
-
-func (c *Cache) transferItems(keys []string) {
-
-	c.Lock()
-	for _, key := range keys {
-		c.itemsSecondCache[key] = c.items[key].ExpirationDeleteTime
-		f, err := os.Create(key)
-		if err != nil {
-			fmt.Println(err)
-		}
-		by, err := json.Marshal(c.items[key])
-		if err != nil {
-			fmt.Println(err)
-		}
-		_, err = f.Write(by)
-		if err != nil {
-			fmt.Println(err)
-		}
-		f.Close()
-
-		delete(c.items, key)
-
-		//лог: "structure "key" moveed is RAM in HDD"
-
-	}
-
-	c.Unlock()
-}
-
-func (c *Cache) deleteSecondCache(key string) bool {
-
-	c.Lock()
-
-	defer c.Unlock()
-
-	err := os.Remove(key)
-	if err != nil {
-		return false
-	}
-
-	delete(c.itemsSecondCache, key)
-	//лог: "structure "key" delete"
-	return true
+  return
 }
