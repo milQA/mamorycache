@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
-	"src/memorycache"
+	"service/memorycache"
 	"github.com/gorilla/mux"
 	"encoding/json"
 	"log"
@@ -26,11 +26,11 @@ func main() {
 	r := mux.NewRouter()
 	r.HandleFunc("/", handler)
 	s := r.PathPrefix("/cache").Subrouter()
-	s.HandleFunc("/Make", handlerPostMakeCache).Methods("POST")
-	s.HandleFunc("/Status", handlerGetCacheStatus).Methods("GET")
-	s.HandleFunc("/{key}", handlerGetCacheValue).Methods("GET")
-	s.HandleFunc("/Add", handlerPostCacheValue).Methods("POST")
-	s.HandleFunc("/{key}", handlerDeleteCacheValue).Methods("DELETE")
+	s.HandleFunc("/Make", handlerPostMakeCache).Methods("POST")   			// вызвать New(JSON)
+	s.HandleFunc("/Status", handlerGetCacheStatus).Methods("GET")				// узнать статус кэша
+	s.HandleFunc("/{key}", handlerGetCacheValue).Methods("GET")					// вызвать Get(key)
+	s.HandleFunc("/Add", handlerPostCacheValue).Methods("POST")					// вызвать Set(JSON)
+	s.HandleFunc("/{key}", handlerDeleteCacheValue).Methods("DELETE")		// вызвать Delete(key)
 
 	http.Handle("/", r)
 	log.Fatal(http.ListenAndServe(":8000", rout))
@@ -44,14 +44,11 @@ func handlerPostMakeCache(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
 	var item Cache
-	err = json.NewDecoder(r.Body).Decode(&item)
+	err := json.NewDecoder(r.Body).Decode(&item)
 
-	if err != nil {
-		json.NewEncoder(w).Encode("400 Bad Request")
-		return
-	}
 
-	memorycache.New(item.defaultExpiration, item.cleanupInterval, item.expirationTime)
+	var cache memorycache.Cache
+	cache := memorycache.New(item.defaultExpiration, item.cleanupInterval, item.expirationTime)
 
 	json.NewEncoder(w).Encode("Все найз")
 
@@ -64,7 +61,7 @@ func handlerGetCacheStatus(w http.ResponseWriter, r *http.Request) {
 
 	cache.CacheStatus()
 
-	//необходимо сделать вывод статуса в JSON
+	//необходимо сделать вывод статуса кэша в JSON
 
 	return
 }
@@ -90,7 +87,7 @@ func handlerPostCacheValue(w http.ResponseWriter, r *http.Request) {
 	// Нужно сделать чтение с JSON. JSON из 4-х полей
 
 	var item Item
-	err = json.NewDecoder(r.Body).Decode(&item)
+	err := json.NewDecoder(r.Body).Decode(&item)
 
 	if err != nil {
 		json.NewEncoder(w).Encode("400 Bad Request")
