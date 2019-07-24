@@ -80,7 +80,7 @@ func (c *Cache) Set(key string, value interface{}, durationDelete, durationTrans
 		TransferCacheSecondLevelTime: transferCacheSecondLevelTime,
 	}
 
-	// лог: "structure "key" is added in RAM"
+	fmt.Printf("structure %s is added in RAM", key)
 
 	c.Unlock()
 
@@ -143,7 +143,7 @@ func (c *Cache) GetSecondCache(key string) (Item, bool) {
 
 	delete(c.itemsSecondCache, key)
 
-	//лог: "structure "key" moveed is HDD in RAM"
+	fmt.Printf("structure %s moveed is HDD in RAM", key)
 	return item, true
 }
 
@@ -276,7 +276,7 @@ func (c *Cache) transferItems(keys []string) {
 
 		delete(c.items, key)
 
-		//лог: "structure "key" moveed is RAM in HDD"
+		fmt.Printf("structure %s moveed is RAM in HDD", key)
 
 	}
 
